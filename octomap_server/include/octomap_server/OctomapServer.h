@@ -67,6 +67,7 @@
 #include <octomap/OcTreeKey.h>
 
 #define COLOR_OCTOMAP_SERVER // turned off here, turned on identical ColorOctomapServer.h - easier maintenance, only maintain OctomapServer and then copy and paste to ColorOctomapServer and change define. There are prettier ways to do this, but this works for now
+#define WHITE_COLOR_TOL 0.05 // range from [0,1.0]. If a cell is this percent close to a pure white color in RGB, make the cell invisible and do not visualize this point in the pointcloud.
 
 #ifdef COLOR_OCTOMAP_SERVER
 #include <octomap/ColorOcTree.h>
@@ -247,6 +248,8 @@ protected:
   bool m_compressMap;
 
   bool m_initConfig;
+
+  double m_whitecolor_tol_ignore;
 
   // downprojected 2D map:
   bool m_incrementalUpdate;

@@ -68,7 +68,8 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_groundFilterDistance(0.04), m_groundFilterAngle(0.15), m_groundFilterPlaneDistance(0.07),
   m_compressMap(true),
   m_incrementalUpdate(false),
-  m_initConfig(true)
+  m_initConfig(true),
+  m_whitecolor_tol_ignore(WHITE_COLOR_TOL)
 {
   double probHit, probMiss, thresMin, thresMax;
 
@@ -108,6 +109,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   private_nh.param("sensor_model/max", thresMax, 0.97);
   private_nh.param("compress_map", m_compressMap, m_compressMap);
   private_nh.param("incremental_2D_projection", m_incrementalUpdate, m_incrementalUpdate);
+  private_nh.param("ignore_percent_close_from_whitecolor", m_whitecolor_tol_ignore, m_whitecolor_tol_ignore);
 
   if (m_filterGroundPlane && (m_pointcloudMinZ > 0.0 || m_pointcloudMaxZ < 0.0)){
     ROS_WARN_STREAM("You enabled ground filtering but incoming pointclouds will be pre-filtered in ["
@@ -516,6 +518,8 @@ void OctomapServer::publishAll(const ros::Time& rostime){
   // call pre-traversal hook:
   handlePreNodeTraversal(rostime);
 
+  // white color tolerance to ignore during visualization
+  double col_tol = m_whitecolor_tol_ignore;
   // now, traverse all leafs in the tree:
   for (OcTreeT::iterator it = m_octree->begin(m_maxTreeDepth),
       end = m_octree->end(); it != end; ++it)
@@ -571,9 +575,18 @@ void OctomapServer::publishAll(const ros::Time& rostime){
             occupiedNodesVis.markers[idx].colors.push_back(heightMapColor(h));
           }
 
+
+
+
 #ifdef COLOR_OCTOMAP_SERVER
           if (m_useColoredMap) {
-            std_msgs::ColorRGBA _color; _color.r = (r / 255.); _color.g = (g / 255.); _color.b = (b / 255.); _color.a = 1.0; // TODO/EVALUATE: potentially use occupancy as measure for alpha channel?
+            std_msgs::ColorRGBA _color; _color.r = (r / 255.); _color.g = (g / 255.); _color.b = (b / 255.); _color.a = 1.0; // TODO/EVALUATE: potentially use occupancy as measure for alpha channel?          
+            
+            // Check if cell is pure white. If so, make alpha 0.0 to make it invisible.
+            if ((std::fabs(1.0 - _color.r) <= col_tol) && (std::fabs(1.0 - _color.g) <= col_tol) && (std::fabs(1.0 - _color.b) <= col_tol)){
+              //std::cout << "This is a white colored cell. setting alpha to 0.0" << std::endl;
+              _color.a = 0.0; 
+            }
             occupiedNodesVis.markers[idx].colors.push_back(_color);
           }
 #endif
@@ -585,7 +598,14 @@ void OctomapServer::publishAll(const ros::Time& rostime){
           PCLPoint _point = PCLPoint();
           _point.x = x; _point.y = y; _point.z = z;
           _point.r = r; _point.g = g; _point.b = b;
-          pclCloud.push_back(_point);
+
+          // Check if cell is pure white. If so, do not publish this point.
+          if ((std::fabs(1.0 - (r / 255.)) <= col_tol) && (std::fabs(1.0 - (g / 255.)) <= col_tol) && (std::fabs(1.0 - (b / 255.)) <= col_tol)){
+            // std::cout << "This is a white colored cell. ignoring point" << std::endl;
+            _point.a = 0.0; 
+          }else{
+            pclCloud.push_back(_point);
+          }
 #else
           pclCloud.push_back(PCLPoint(x, y, z));
 #endif
